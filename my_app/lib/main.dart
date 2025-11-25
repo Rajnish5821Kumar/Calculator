@@ -41,35 +41,148 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       num2 = 0.0;
       operand = '';
     } else if (buttonText == '+' || buttonText == '-' || buttonText == '*' || buttonText == '/') {
-      num1 = double.parse(output);
-      operand = buttonText;
-      _output = '0';
-    } else if (buttonText == '=') {
-      num2 = double.parse(output);
+      // If an operator is already set and the user hasn't entered a new number
+      // (raw `_output` is still '0'), treat this as changing the operator only
+      if (operand.isNotEmpty && (_output == '0' || _output.isEmpty)) {
+        operand = buttonText;
+        setState(() {});
+        return;
+      }
 
-    switch (operand) {
+      // Store the current raw input as num1
+      try {
+        num1 = double.parse(_output);
+      } catch (_) {
+        num1 = 0.0;
+      }
+      operand = buttonText;
+      // leave _output empty to indicate we're ready for second operand
+      _output = '';
+    } else if (buttonText == '=') {
+      // Parse the second operand from the raw input
+      try {
+        num2 = double.parse(_output);
+      } catch (_) {
+        num2 = 0.0;
+      }
+
+      double result = 0.0;
+      bool error = false;
+      switch (operand) {
         case '+':
-          _output = (num1 + num2).toString();
+          result = num1 + num2;
           break;
         case '-':
-          _output = (num1 - num2).toString();
+          result = num1 - num2;
           break;
         case '*':
-          _output = (num1 * num2).toString();
+          result = num1 * num2;
           break;
         case '/':
-          _output = (num1 / num2).toString();
+          if (num2 == 0) {
+            error = true;
+          } else {
+            result = num1 / num2;
+          }
+          break;
+        default:
+          result = num2;
           break;
       }
+
+      if (error) {
+        _output = 'Error';
+        output = 'Error';
+      } else {
+        _output = result.toString();
+      }
+
       num1 = 0.0;
       num2 = 0.0;
       operand = '';
+    } else if (buttonText == '.') {
+      // Decimal point handling
+      if (_output.contains('.')) {
+        return; // ignore extra decimal
+      }
+      if (_output == '0' || _output.isEmpty) {
+        _output = '0.';
+      } else {
+        _output += '.';
+      }
     } else {
-      _output += buttonText;
+      // Digit pressed
+      if (_output == '0' || _output.isEmpty) {
+        _output = buttonText; // start new input or replace leading zero
+      } else if (_output == 'Error') {
+        _output = buttonText;
+      } else {
+        _output += buttonText;
+      }
     }
     setState(() {
-      output = double.parse(_output).toStringAsFixed(2).replaceAll(RegExp(r'\.0+$'), '');
+      if (_output == 'Error') {
+        output = 'Error';
+        return;
+      }
+      // If waiting for second operand (empty _output) show stored first number
+      if (_output.isEmpty && operand.isNotEmpty) {
+        double v = num1;
+        if (v == v.toInt()) {
+          output = v.toInt().toString();
+        } else {
+          String s = v.toStringAsFixed(8);
+          s = s.replaceFirst(RegExp(r'0+$'), '');
+          s = s.replaceFirst(RegExp(r'\.$'), '');
+          output = s;
+        }
+        return;
+      }
+      try {
+        double v = double.parse(_output);
+        if (v == v.toInt()) {
+          output = v.toInt().toString();
+        } else {
+          String s = v.toStringAsFixed(8);
+          // trim trailing zeros and optional trailing dot
+          s = s.replaceFirst(RegExp(r'0+$'), '');
+          s = s.replaceFirst(RegExp(r'\.$'), '');
+          output = s;
+        }
+      } catch (_) {
+        output = _output;
+      }
     });
+  }
+
+  String formatDouble(double v) {
+    if (v == v.toInt()) return v.toInt().toString();
+    String s = v.toStringAsFixed(8);
+    s = s.replaceFirst(RegExp(r'0+$'), '');
+    s = s.replaceFirst(RegExp(r'\.$'), '');
+    return s;
+  }
+
+  String formatRaw(String raw) {
+    if (raw.isEmpty) return '';
+    if (raw == 'Error') return raw;
+    try {
+      double v = double.parse(raw);
+      return formatDouble(v);
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  String getDisplayText() {
+    // If waiting for second operand, show "num1 <operator>" so operator is visible
+    if (operand.isNotEmpty) {
+      // show "num1 <operator> [current input]" so user sees the whole expression
+      final second = formatRaw(_output);
+      if (second.isEmpty) return '${formatDouble(num1)} $operand';
+      return '${formatDouble(num1)} $operand $second';
+    }
+    return output;
   }
 
   @override
@@ -89,7 +202,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
               horizontal: 12,
             ),
             child: Text(
-              output,
+              getDisplayText(),
               style: const TextStyle(
                 fontSize: 48,
                 color: Colors.white,
